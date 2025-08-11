@@ -4,23 +4,34 @@ from typing import Optional
 import datetime
 import uvicorn
 from kafka import KafkaProducer
+from kafka.errors import NoBrokersAvailable
 import json
-from controllers.admin_controller import AdminController
-from services.access_control_service import MySQLAccessControlService
-from services.access_log_repo_memory import MySQLAccessLogRepository
-from services.user_repo_memory import MySQLUserRepository
-from services.face_recognition_insight import InsightFaceRecognitionService
-import numpy as np
-import cv2
+import time
+from backend.controllers.admin_controller import AdminController
+from backend.services.access_control_service import MySQLAccessControlService
+from backend.services.access_log_repo_memory import MySQLAccessLogRepository
+from backend.services.user_repo_memory import MySQLUserRepository
+from backend.services.face_recognition_insight import InsightFaceRecognitionService
 from insightface.app import FaceAnalysis
-from services.user_repo_memory import MySQLUserRepository
-
+import os
 class KafkaLogger:
     def __init__(self, topic='access_logs'):
-        self.producer = KafkaProducer(
-            bootstrap_servers='localhost:9092',
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
+        broker = os.getenv("KAFKA_BROKER", "kafka:9092")
+        retries = 10
+        for i in range(retries):
+            try:
+                self.producer = KafkaProducer(
+                    bootstrap_servers=broker,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+                )
+                print(f"Connected to Kafka at {broker}")
+                break
+            except NoBrokersAvailable:
+                print(f"Kafka not ready, retrying {i+1}/{retries}...")
+                time.sleep(2)
+        else:
+            raise RuntimeError("Kafka is not available after retries")
+
         self.topic = topic
 
     def log_access(self, user_id: str, status: str):

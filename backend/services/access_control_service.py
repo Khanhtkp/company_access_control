@@ -4,7 +4,7 @@ from ..models.user import AccessRule
 import pymysql
 import json
 class MySQLAccessControlService(IAccessControlService):
-    def __init__(self, conn_params):
+    def __init__(self):
         self.conn = pymysql.connect(
             host="mysql",
             port=3306,

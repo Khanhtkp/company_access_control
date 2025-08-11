@@ -1,4 +1,5 @@
 from ..models.access_log import AccessLog
+from abc import ABC, abstractmethod
 from typing import List, Optional
 class IAccessLogRepository(ABC):
     @abstractmethod

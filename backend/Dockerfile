@@ -1,8 +1,10 @@
 FROM python:3.10-slim
 
+# Prevent Python from writing .pyc files and buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# Install system dependencies (OpenCV, FFmpeg, etc.)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgl1 \
@@ -11,15 +13,20 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+# Set working directory to project root
 WORKDIR /app
 
-COPY requirements.txt .
+# Copy only requirements first (for caching)
+COPY backend/requirements.txt ./requirements.txt
 
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the whole project
 COPY . .
 
+# Expose FastAPI default port
 EXPOSE 8000
 
-# Run FastAPI with reload for development (can remove --reload in prod)
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Start FastAPI
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

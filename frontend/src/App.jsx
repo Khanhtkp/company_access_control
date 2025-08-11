@@ -1,11 +1,8 @@
-import AdminPanel from './pages/AdminPanel';
+import React from "react";
+import AdminPanel from "./pages/AdminPanel";
 
 function App() {
-  return (
-    <div>
-      <AdminPanel />
-    </div>
-  );
+  return <AdminPanel />;
 }
 
 export default App;

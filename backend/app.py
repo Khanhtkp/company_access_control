@@ -1,48 +1,18 @@
-from fastapi import FastAPI, UploadFile, File, Form, Query
+from fastapi import FastAPI, UploadFile, File, Form, Query, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
-import datetime
 import uvicorn
-from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable
-import json
-import time
+from datetime import date
 from backend.controllers.admin_controller import AdminController
 from backend.services.access_control_service import MySQLAccessControlService
 from backend.services.access_log_repo_memory import MySQLAccessLogRepository
 from backend.services.user_repo_memory import MySQLUserRepository
 from backend.services.face_recognition_insight import InsightFaceRecognitionService
 from backend.services.llms_service import GeminiLLMService
+from backend.services.kafka_logger import KafkaLogger
+from backend.services.email_service import EmailService
 from insightface.app import FaceAnalysis
-import os
-class KafkaLogger:
-    def __init__(self, topic='access_logs'):
-        broker = os.getenv("KAFKA_BROKER", "kafka:9092")
-        retries = 10
-        for i in range(retries):
-            try:
-                self.producer = KafkaProducer(
-                    bootstrap_servers=broker,
-                    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-                )
-                print(f"Connected to Kafka at {broker}")
-                break
-            except NoBrokersAvailable:
-                print(f"Kafka not ready, retrying {i+1}/{retries}...")
-                time.sleep(2)
-        else:
-            raise RuntimeError("Kafka is not available after retries")
 
-        self.topic = topic
-
-    def log_access(self, user_id: str, status: str):
-        log = {
-            "user_id": user_id,
-            "status": status,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
-        self.producer.send(self.topic, log)
-        self.producer.flush()
 app_face = FaceAnalysis(providers=['CPUExecutionProvider'])
 app_face.prepare(ctx_id=0)
 user_repo = MySQLUserRepository()
@@ -50,10 +20,16 @@ log_repo = MySQLAccessLogRepository()
 access_service = MySQLAccessControlService()
 known_embeddings, student_ids = user_repo.load_known_faces(app_face)
 face_service = InsightFaceRecognitionService(app_face, known_embeddings, student_ids)
-llm_service = GeminiLLMService("YOUR_API_TOKEN")
+llm_service = GeminiLLMService("YOUR_API_KEY")
 controller = AdminController(user_repo, log_repo, access_service, face_service, llm_service)
 kafka_logger = KafkaLogger()
-
+email_service = EmailService(
+    smtp_server="smtp.gmail.com",
+    smtp_port=587,
+    smtp_user="your_username@gmail.com",
+    smtp_password="your_password"
+)
+email_sent_today = {}
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -102,7 +78,6 @@ def list_users():
 def delete_user(user_id: str):
     controller.delete_user(user_id)
     return {"message": "User deleted."}
-from fastapi import HTTPException
 
 @app.patch("/users/{user_id}")
 async def modify_user(
@@ -138,10 +113,23 @@ async def modify_user(
 
 
 @app.post("/verify_access")
-async def verify_access(face_file: UploadFile = File(...)):
+async def verify_access(face_file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
     face_bytes = await face_file.read()
     matched_id, status = controller.verify_and_log_access(face_bytes)
     kafka_logger.log_access(matched_id or "unknown", status)
+
+    if status == "granted" and matched_id:
+        today_str = date.today().isoformat()
+        if email_sent_today.get(matched_id) != today_str:
+            user = user_repo.get_user(matched_id)
+            if user and user.email:
+                subject = "Access Verified Today"
+                body = f"Hello {user.name},\n\nYour access was verified today ({today_str}). Have a great day!\n\nRegards,\nAccess Control Team"
+
+                background_tasks.add_task(email_service.send_email, user.email, subject, body)
+
+                email_sent_today[matched_id] = today_str
+
     return {"status": status, "user_id": matched_id or ""}
 
 

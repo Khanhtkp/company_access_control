@@ -30,10 +30,7 @@ A comprehensive attendance and access control system featuring face recognition,
 
 ### Prerequisites
 
-- Python 3.10+  
-- Node.js 16+  
-- MySQL Server  
-- Kafka Broker  
+- Docker and Docker Compose installed
 - Google Gemini API key (or compatible LLM API key)  
 - SMTP email account with app password (for sending notifications)  
 
@@ -42,59 +39,43 @@ A comprehensive attendance and access control system featuring face recognition,
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/attendance-access-control.git
-   cd attendance-access-control
+   git clone https://github.com/Khanhtkp/company-access-control.git
+   cd company-access-control
    ```
 
-2. **Backend Setup**
+2. **Configure environment variables**
 
-   - Configure your environment variables or config files with credentials, including:
-     - Database connection info
-     - Kafka broker address
-     - Email SMTP username and app password
-     - LLM API key
+  Fill at `.env` file inside the `config/` folder with the following variables:
 
-   - Install backend dependencies:
+   ```dotenv
+   # config/.env
+   SMTP_USERNAME=your_email@example.com
+   SMTP_PASSWORD=your_email_app_password
+   LLM_API_KEY=your_llm_api_key
+   ```
 
-     ```bash
-     cd backend
-     pip install -r requirements.txt
-     ```
+3. **Run with Docker Compose**
 
-   - Run backend server:
+   The project includes a `docker-compose.yml` at the root to run all services (backend, frontend, MySQL, Kafka) together:
 
-     ```bash
-     uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-     ```
+   ```bash
+   docker-compose up --build
+   ```
 
-3. **Frontend Setup**
+4. **Access services**
 
-   - Install frontend dependencies:
-
-     ```bash
-     cd frontend
-     npm install
-     ```
-
-   - Run frontend server:
-
-     ```bash
-     npm start
-     ```
-
-4. **Kafka**
-
-   - Ensure Kafka broker is running and accessible based on your configuration.
+   - Frontend Admin Panel: [http://localhost:3000](http://localhost:5173)  
+   - Backend API: [http://localhost:8000](http://localhost:8000)  
+   - Kafka and MySQL run inside the Docker network and are accessible to backend
 
 ---
 
 ## Usage
 
-- Open the frontend admin panel at [http://localhost:3000](http://localhost:3000)
-- Manage users: add, edit, delete
-- Use the camera interface to verify access by face recognition
+- Manage users via the frontend
+- Use camera interface to verify access with face recognition
 - View logs and attendance reports
-- Verified users will receive automatic attendance notification emails once per day
+- Verified users receive automatic attendance notification emails once per day
 
 ---
 
@@ -102,11 +83,10 @@ A comprehensive attendance and access control system featuring face recognition,
 
 ```
 attendance-access-control/
-├── backend/          # FastAPI backend code and services
-├── frontend/         # React admin panel frontend
-├── config/           # Configuration files (credentials, keys)
-├── scripts/          # Utility scripts (e.g., DB migrations, deployments)
-├── docs/             # Project documentation and API specs
+├── backend/          # FastAPI backend code and Dockerfile
+├── frontend/         # React admin panel frontend and Dockerfile
+├── config/           # Configuration files (credentials, .env)
+├── docker-compose.yml# Docker Compose file for running all services
 └── README.md         # Project overview and instructions
 ```
 
@@ -114,12 +94,9 @@ attendance-access-control/
 
 ## Environment Configuration
 
-Store sensitive credentials securely in the `config` folder or use environment variables, including:
-
-- Email SMTP username and app password (for sending notifications)
-- Google Gemini or other LLM API keys
-- Database credentials
-- Kafka broker URL
+- Store sensitive credentials securely in `config/.env`  
+- Docker Compose will load these variables for backend and frontend services  
+- Make sure to **never commit `.env`** with real credentials to public repos
 
 ---
 
@@ -137,4 +114,4 @@ MIT License
 
 ## Contact
 
-For questions or support, please contact [your-email@example.com].
+For questions or support, please contact [merikatori02@gmail.com].

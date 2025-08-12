@@ -12,7 +12,7 @@ from backend.services.llms_service import GeminiLLMService
 from backend.services.kafka_logger import KafkaLogger
 from backend.services.email_service import EmailService
 from insightface.app import FaceAnalysis
-
+from config.config import settings
 app_face = FaceAnalysis(providers=['CPUExecutionProvider'])
 app_face.prepare(ctx_id=0)
 user_repo = MySQLUserRepository()
@@ -20,14 +20,14 @@ log_repo = MySQLAccessLogRepository()
 access_service = MySQLAccessControlService()
 known_embeddings, student_ids = user_repo.load_known_faces(app_face)
 face_service = InsightFaceRecognitionService(app_face, known_embeddings, student_ids)
-llm_service = GeminiLLMService("YOUR_API_KEY")
+llm_service = GeminiLLMService(settings.llm_api_key)
 controller = AdminController(user_repo, log_repo, access_service, face_service, llm_service)
 kafka_logger = KafkaLogger()
 email_service = EmailService(
     smtp_server="smtp.gmail.com",
     smtp_port=587,
-    smtp_user="your_username@gmail.com",
-    smtp_password="your_password"
+    smtp_user=settings.email_user,
+    smtp_password=settings.email_pass
 )
 email_sent_today = {}
 app = FastAPI()

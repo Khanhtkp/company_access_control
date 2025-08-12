@@ -1,26 +1,23 @@
 from ..interfaces.access_control import IAccessControlService
 from ..interfaces.access_log_repo import IAccessLogRepository
 from ..interfaces.face_recognition import IFaceRecognitionService
+from ..interfaces.llms_api import ILLMService
 from ..interfaces.user_repo import IUserRepository
 from ..models.user import User, AccessRule
 from ..models.access_log import AccessLog
 from typing import Optional, List
-import datetime
+from datetime import date, datetime, timedelta
 class AdminController:
     def __init__(self, user_repo: IUserRepository, log_repo: IAccessLogRepository,
-                 access_service: IAccessControlService, face_service: IFaceRecognitionService):
+                 access_service: IAccessControlService, face_service: IFaceRecognitionService, llm_service: ILLMService):
         self.user_repo = user_repo
         self.log_repo = log_repo
         self.access_service = access_service
         self.face_service = face_service
-
+        self.llm_service = llm_service
     def add_user(self, user_data: dict):
         user = User(**user_data)
         self.user_repo.add_user(user)
-
-    def edit_user(self, user_data: dict):
-        user = User(**user_data)
-        self.user_repo.update_user(user)
 
     def delete_user(self, user_id: str):
         self.user_repo.delete_user(user_id)
@@ -42,12 +39,89 @@ class AdminController:
     def get_access_rules(self, user_id: Optional[str] = None) -> List[dict]:
         return [r.to_dict() for r in self.access_service.get_rules(user_id)]
 
+    from datetime import date
+
     def verify_and_log_access(self, face_img: bytes):
         user_id = self.face_service.verify_face(face_img)
-        now = datetime.datetime.now()
+        now = datetime.now()
         status = "granted" if user_id else "denied"
+
+        if user_id:
+            user = self.user_repo.get_user(user_id)
+            if user:
+                today = date.today()
+                if user.last_verified_date != today:
+                    user.attendance_count = (user.attendance_count or 0) + 1
+                    user.last_verified_date = today
+                    self.user_repo.update_user(user)
+
         self.log_repo.add_log(AccessLog(user_id, now, status, face_img))
-        return status
+        return user_id, status
 
     def get_user_logs(self, user_id: Optional[str] = None) -> List[dict]:
         return [l.to_dict() for l in self.log_repo.get_logs(user_id)]
+
+    def modify_user(self, user_id: str, updates: dict):
+        user = self.user_repo.get_user(user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        # Update only provided fields
+        for key, value in updates.items():
+            if hasattr(user, key) and value is not None:
+                setattr(user, key, value)
+
+        self.user_repo.update_user(user)
+        return user.to_dict()
+
+    def get_report(self, period_days: int = 30) -> str:
+        if not self.llm_service:
+            raise RuntimeError("LLM service not configured")
+
+        cutoff_date = date.today() - timedelta(days=period_days)
+        users = self.user_repo.get_all_users()
+
+        recent_users = [u for u in users if u.last_verified_date and u.last_verified_date >= cutoff_date]
+
+        attendance_summary = {}
+        # Store (user_id, name) as key, attendance count as value
+        for user in recent_users:
+            attendance_summary[(user.user_id, user.name)] = user.attendance_count or 0
+
+        prompt = f"Generate an attendance report for the last {period_days} days:\n"
+        prompt += "User ID - Name - Attendance Count\n"
+        for (user_id, name), count in attendance_summary.items():
+            prompt += f"{user_id} - {name} - {count}\n"
+
+        prompt += "\nSummarize this attendance data."
+
+        report = self.llm_service.generate_report(prompt)
+        return report
+
+    def get_today_attendance_report(self) -> str:
+        if not self.llm_service:
+            raise RuntimeError("LLM service not configured")
+
+        today = date.today()
+        users = self.user_repo.get_all_users()
+
+        attended = []
+        absent = []
+
+        for user in users:
+            if user.last_verified_date == today:
+                attended.append((user.user_id, user.name))
+            else:
+                absent.append((user.user_id, user.name))
+
+        def format_users(user_list):
+            # Format as "UserID(Name)"
+            return ', '.join([f"{uid}({name})" for uid, name in user_list])
+
+        prompt = f"Attendance report for today ({today}):\n"
+        prompt += f"Attended ({len(attended)}): {format_users(attended) if attended else 'None'}\n"
+        prompt += f"Absent ({len(absent)}): {format_users(absent) if absent else 'None'}\n\n"
+        prompt += "Summarize this attendance data."
+
+        report = self.llm_service.generate_report(prompt)
+        return report

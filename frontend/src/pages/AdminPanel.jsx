@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import axios from "axios";
-
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState("addUser");
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editUserId, setEditUserId] = useState(null);
   const [userForm, setUserForm] = useState({
     user_id: "",
     name: "",
@@ -14,23 +16,40 @@ export default function AdminPanel() {
     phone: "",
     face_file: null
   });
-
+  const [reportText, setReportText] = useState("");
+  const [todayReportText, setTodayReportText] = useState("");
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Fetch users
   const fetchUsers = async () => {
     const res = await axios.get("http://localhost:8000/users");
     setUsers(res.data);
   };
 
-  // Fetch logs
   const fetchLogs = async () => {
     const res = await axios.get("http://localhost:8000/logs");
     setLogs(res.data);
   };
+  React.useEffect(() => {
+    fetchUsers();
+  }, []);
+  const fetchReport = async () => {
+    try {
+      const res = await axios.get("http://localhost:8000/report");
+      setReportText(res.data.report || "No report available");
+    } catch (err) {
+      setReportText("Failed to fetch report");
+    }
+  };
 
-  // Add user
+  const fetchTodayReport = async () => {
+    try {
+      const res = await axios.get("http://localhost:8000/report/today");
+      setTodayReportText(res.data.report || "No report available");
+    } catch (err) {
+      setTodayReportText("Failed to fetch today's report");
+    }
+  };
   const handleAddUser = async (e) => {
     e.preventDefault();
     const formData = new FormData();
@@ -40,116 +59,374 @@ export default function AdminPanel() {
 
     await axios.post("http://localhost:8000/users", formData);
     alert("User added successfully!");
+
+    setUserForm({
+      user_id: "",
+      name: "",
+      department: "",
+      role: "",
+      email: "",
+      phone: "",
+      face_file: null
+    });
+
     fetchUsers();
   };
 
-  // Delete user
+
   const handleDeleteUser = async (userId) => {
     await axios.delete(`http://localhost:8000/users/${userId}`);
     fetchUsers();
   };
+  const handleModifyUser = async (userId) => {
+    const formData = new FormData();
+    formData.append("name", userForm.name || "");
+    formData.append("department", userForm.department || "");
+    formData.append("role", userForm.role || "");
+    formData.append("email", userForm.email || "");
+    formData.append("phone", userForm.phone || "");
+    if (userForm.face_file) {
+      formData.append("face_file", userForm.face_file);
+    }
 
-  // Start camera for verification
+    try {
+      await axios.patch(`http://localhost:8000/users/${userId}`, formData);
+      alert("User updated successfully!");
+      fetchUsers(); // refresh instantly
+    } catch (err) {
+      alert("Failed to update user: " + err.response?.data?.detail);
+    }
+  };
+
   const startCamera = () => {
     navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
       videoRef.current.srcObject = stream;
+      const intervalId = setInterval(captureAndVerify, 2000);
+      videoRef.current.dataset.intervalId = intervalId;
     });
   };
 
-  // Capture image and verify
+
   const captureAndVerify = async () => {
     const ctx = canvasRef.current.getContext("2d");
     ctx.drawImage(videoRef.current, 0, 0, 300, 200);
     canvasRef.current.toBlob(async (blob) => {
       const formData = new FormData();
       formData.append("face_file", blob, "capture.jpg");
-      const res = await axios.post("http://localhost:8000/verify_access", formData);
-      alert(`Access ${res.data.status} for ${res.data.user_id}`);
+
+      try {
+        const res = await axios.post("http://localhost:8000/verify_access", formData);
+        if (res.data.status === "granted") {
+          alert(`✅ Access granted for ${res.data.user_id}`);
+
+          // 🔹 Mark attendance locally
+          setUsers(prevUsers =>
+            prevUsers.map(user =>
+              user.user_id === res.data.user_id
+                ? { ...user, attendance_today: true }
+                : user
+            )
+          );
+
+          clearInterval(intervalIdRef.current); // stop checking
+        } else {
+          console.log("Access denied");
+        }
+      } catch (err) {
+        console.error("Verification error:", err);
+      }
     });
   };
 
-  // Tab rendering
+
   const renderTab = () => {
     switch (activeTab) {
       case "addUser":
         return (
-          <form onSubmit={handleAddUser}>
-            <input placeholder="User ID" onChange={(e) => setUserForm({ ...userForm, user_id: e.target.value })} />
-            <input placeholder="Name" onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} />
-            <input placeholder="Department" onChange={(e) => setUserForm({ ...userForm, department: e.target.value })} />
-            <input placeholder="Role" onChange={(e) => setUserForm({ ...userForm, role: e.target.value })} />
-            <input placeholder="Email" onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} />
-            <input placeholder="Phone" onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })} />
-            <input type="file" onChange={(e) => setUserForm({ ...userForm, face_file: e.target.files[0] })} />
-            <button type="submit">Add User</button>
-          </form>
-        );
-      case "viewUsers":
-        return (
-          <div>
-            <button onClick={fetchUsers}>Refresh</button>
-            <table>
-              <thead>
-                <tr>
-                  <th>User ID</th>
-                  <th>Name</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.user_id}>
-                    <td>{u.user_id}</td>
-                    <td>{u.name}</td>
-                    <td>
-                      <button onClick={() => handleDeleteUser(u.user_id)}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold mb-4">Add New User</h2>
+            <form onSubmit={handleAddUser} className="grid gap-3">
+              {["user_id", "name", "department", "role", "email", "phone"].map((field) => (
+                <input
+                  key={field}
+                  placeholder={field.replace("_", " ").toUpperCase()}
+                  className="border border-gray-300 rounded p-2 text-sm"
+                  onChange={(e) => setUserForm({ ...userForm, [field]: e.target.value })}
+                />
+              ))}
+              <input
+                type="file"
+                className="border border-gray-300 rounded p-2 text-sm"
+                onChange={(e) => setUserForm({ ...userForm, face_file: e.target.files[0] })}
+              />
+              <button
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm"
+              >
+                Add User
+              </button>
+            </form>
           </div>
         );
-      case "verifyAccess":
+
+      case "viewUsers":
         return (
-          <div>
-            <video ref={videoRef} autoPlay width="300" height="200" />
-            <canvas ref={canvasRef} width="300" height="200" style={{ display: "none" }} />
-            <div>
-              <button onClick={startCamera}>Start Camera</button>
-              <button onClick={captureAndVerify}>Verify</button>
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Users</h2>
+                <button
+                    onClick={fetchUsers}
+                    className="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded text-sm"
+                >
+                  Refresh
+                </button>
+              </div>
+              <table className="min-w-full border-collapse border border-gray-300">
+                <thead className="bg-gray-100">
+                <tr>
+                  <th className="border border-gray-300 px-4 py-2 text-center">User ID</th>
+                  <th className="border border-gray-300 px-4 py-2 text-center">Name</th>
+                  <th className="border border-gray-300 px-4 py-2 text-center">Phone</th>
+                  <th className="border border-gray-300 px-4 py-2 text-center">Email</th>
+                  <th className="border border-gray-300 px-4 py-2 text-center">Attendance</th>
+                  <th className="border border-gray-300 px-4 py-2 text-center">Action</th>
+                </tr>
+                </thead>
+                <tbody>
+                {users.map((user) => (
+                    <tr key={user.user_id}>
+                      <td className="border border-gray-300 px-4 py-2 text-center">{user.user_id}</td>
+                      <td className="border border-gray-300 px-4 py-2 text-center">{user.name}</td>
+                      <td className="border border-gray-300 px-4 py-2 text-center">{user.phone}</td>
+                      <td className="border border-gray-300 px-4 py-2 text-center">{user.email}</td>
+                      <td className="border border-gray-300 px-4 py-2 text-center">
+                        {user.attendance_today ? (
+                            <span className="text-green-500 text-lg">✔</span>
+                        ) : (
+                            ""
+                        )}
+                      </td>
+                      <td className="border border-gray-300 px-4 py-2">
+                        <div className="flex justify-center items-center space-x-2">
+                          <button
+                              onClick={() => handleDeleteUser(user.user_id)}
+                              className="px-3 py-1 rounded-lg bg-red-100 text-red-600 font-medium hover:bg-red-200 transition"
+                          >
+                            Delete
+                          </button>
+                          <button
+                              onClick={() => {
+                                setEditUserId(user.user_id);
+                                setUserForm({
+                                  user_id: user.user_id,
+                                  name: user.name || "",
+                                  department: user.department || "",
+                                  role: user.role || "",
+                                  email: user.email || "",
+                                  phone: user.phone || "",
+                                  face_file: null
+                                });
+                                setIsEditing(true);
+                              }}
+                              className="px-3 py-1 rounded-lg bg-blue-100 text-blue-600 font-medium hover:bg-blue-200 transition"
+                          >
+                            Modify
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                ))}
+                </tbody>
+              </table>
+              {isEditing && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+                    <div className="bg-white rounded-lg p-6 w-96 shadow-lg">
+                      <h2 className="text-lg font-semibold mb-4">Edit User</h2>
+                      <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleModifyUser(editUserId);
+                            setIsEditing(false);
+                          }}
+                          className="grid gap-3"
+                      >
+                        {["name", "department", "role", "email", "phone"].map((field) => (
+                            <input
+                                key={field}
+                                placeholder={field.replace("_", " ").toUpperCase()}
+                          className="border border-gray-300 rounded p-2 text-sm"
+                          value={userForm[field]}
+                          onChange={(e) => setUserForm({ ...userForm, [field]: e.target.value })}
+                        />
+                      ))}
+                      <input
+                        type="file"
+                        className="border border-gray-300 rounded p-2 text-sm"
+                        onChange={(e) => setUserForm({ ...userForm, face_file: e.target.files[0] })}
+                      />
+                      <div className="flex justify-end space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditing(false)}
+                          className="bg-gray-200 px-4 py-2 rounded text-sm"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+        );
+
+      case "verifyAccess":
+        const stopCamera = () => {
+          const stream = videoRef.current?.srcObject;
+          if (stream) {
+            stream.getTracks().forEach(track => track.stop()); // stop all tracks
+            videoRef.current.srcObject = null;
+          }
+          if (videoRef.current?.dataset.intervalId) {
+            clearInterval(videoRef.current.dataset.intervalId);
+            delete videoRef.current.dataset.intervalId;
+          }
+        };
+
+        return (
+          <div className="flex flex-col items-center space-y-4">
+            <video
+              ref={videoRef}
+              autoPlay
+              width="300"
+              height="200"
+              className="border rounded"
+            />
+            <canvas
+              ref={canvasRef}
+              width="300"
+              height="200"
+              style={{ display: "none" }}
+            />
+            <div className="flex space-x-4">
+              <button
+                onClick={startCamera}
+                className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow"
+              >
+                Start Camera
+              </button>
+              <button
+                onClick={stopCamera}
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded shadow"
+              >
+                Stop Camera
+              </button>
             </div>
           </div>
         );
+
       case "viewLogs":
         return (
-          <div>
-            <button onClick={fetchLogs}>Refresh Logs</button>
-            <ul>
-              {logs.map((log, idx) => (
-                <li key={idx}>
-                  {log.timestamp} - {log.user_id} - {log.status}
-                </li>
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Access Logs</h2>
+                <button
+                    onClick={fetchLogs}
+                    className="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded text-sm"
+                >
+                  Refresh Logs
+                </button>
+              </div>
+              <ul className="space-y-2 text-sm">
+                {logs.map((log, idx) => (
+                    <li key={idx} className="border-b pb-1">
+                      <span className="font-medium">{log.user_id}</span> — {log.status} —{" "}
+                      <span className="text-gray-500">{log.timestamp}</span>
+                    </li>
               ))}
             </ul>
           </div>
         );
+      case "report":
+        return (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold mb-4">Reports</h2>
+            <div className="mb-6">
+              <h3 className="font-medium mb-2">General Attendance Report</h3>
+              <button
+                  onClick={fetchReport}
+                  className="mb-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm"
+              >
+                Refresh Report
+              </button>
+              <div className="bg-gray-50 p-4 rounded h-48 overflow-auto prose max-w-full">
+                <ReactMarkdown>{reportText}</ReactMarkdown>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-medium mb-2">Today's Attendance Report</h3>
+              <button
+                  onClick={fetchTodayReport}
+                  className="mb-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm"
+              >
+                Refresh Today's Report
+              </button>
+              <div className="bg-gray-50 p-4 rounded h-48 overflow-auto prose max-w-full">
+                <ReactMarkdown>{todayReportText}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
   };
 
   return (
-    <div>
-      <h1>Admin Panel</h1>
-      <nav>
-        <button onClick={() => setActiveTab("addUser")}>Add User</button>
-        <button onClick={() => setActiveTab("viewUsers")}>View Users</button>
-        <button onClick={() => setActiveTab("verifyAccess")}>Verify Access</button>
-        <button onClick={() => setActiveTab("viewLogs")}>View Logs</button>
-      </nav>
-      <hr />
-      {renderTab()}
+      <div className="min-h-screen bg-gray-100 flex flex-col">
+      {/* Header */}
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+          <h1 className="text-lg font-semibold text-gray-900">Admin Panel</h1>
+        </div>
+      </header>
+
+      {/* Main */}
+      <div className="flex flex-1">
+        {/* Sidebar */}
+        <nav className="w-56 bg-white border-r p-4 space-y-2">
+          {[
+            { key: "addUser", label: "Add User" },
+            { key: "viewUsers", label: "View Users" },
+            { key: "verifyAccess", label: "Verify Access" },
+            { key: "viewLogs", label: "View Logs" },
+            { key: "report", label: "Report" }
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`block w-full text-left px-3 py-2 rounded text-sm ${
+                activeTab === tab.key
+                  ? "bg-indigo-100 text-indigo-700 font-medium"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Content Area */}
+        <main className="flex-1 p-6">{renderTab()}</main>
+      </div>
     </div>
   );
 }

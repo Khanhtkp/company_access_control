@@ -27,25 +27,29 @@ class MySQLUserRepository(IUserRepository):
                     role VARCHAR(255),
                     email VARCHAR(255),
                     phone VARCHAR(255),
-                    face_data LONGBLOB
-                )
+                    face_data LONGBLOB,
+                    last_verified_date DATE NULL,
+                    attendance_count INT NULL
+                );
             """)
         self.conn.commit()
 
     def add_user(self, user: User):
         with self.conn.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO users (user_id, name, department, role, email, phone, face_data)
+                INSERT INTO users (user_id, name, department, role, email, phone, face_data, attendance_count)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (user.user_id, user.name, user.department, user.role, user.email, user.phone, user.face_data))
+            """, (user.user_id, user.name, user.department, user.role, user.email, user.phone, user.face_data, user.attendance_count))
         self.conn.commit()
 
     def update_user(self, user: User):
         with self.conn.cursor() as cursor:
             cursor.execute("""
-                UPDATE users SET name=%s, department=%s, role=%s, email=%s, phone=%s, face_data=%s
+                UPDATE users
+                SET name=%s, department=%s, role=%s, email=%s, phone=%s, face_data=%s, last_verified_date=%s, attendance_count=%s
                 WHERE user_id=%s
-            """, (user.name, user.department, user.role, user.email, user.phone, user.face_data, user.user_id))
+            """, (user.name, user.department, user.role, user.email, user.phone, user.face_data,
+                  user.last_verified_date, user.user_id))
         self.conn.commit()
 
     def delete_user(self, user_id: str):

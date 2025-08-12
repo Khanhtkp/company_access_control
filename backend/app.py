@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import datetime
@@ -12,6 +12,7 @@ from backend.services.access_control_service import MySQLAccessControlService
 from backend.services.access_log_repo_memory import MySQLAccessLogRepository
 from backend.services.user_repo_memory import MySQLUserRepository
 from backend.services.face_recognition_insight import InsightFaceRecognitionService
+from backend.services.llms_service import GeminiLLMService
 from insightface.app import FaceAnalysis
 import os
 class KafkaLogger:
@@ -49,8 +50,8 @@ log_repo = MySQLAccessLogRepository()
 access_service = MySQLAccessControlService()
 known_embeddings, student_ids = user_repo.load_known_faces(app_face)
 face_service = InsightFaceRecognitionService(app_face, known_embeddings, student_ids)
-
-controller = AdminController(user_repo, log_repo, access_service, face_service)
+llm_service = GeminiLLMService("YOUR_API_TOKEN")
+controller = AdminController(user_repo, log_repo, access_service, face_service, llm_service)
 kafka_logger = KafkaLogger()
 
 app = FastAPI()
@@ -101,6 +102,39 @@ def list_users():
 def delete_user(user_id: str):
     controller.delete_user(user_id)
     return {"message": "User deleted."}
+from fastapi import HTTPException
+
+@app.patch("/users/{user_id}")
+async def modify_user(
+    user_id: str,
+    name: Optional[str] = Form(None),
+    department: Optional[str] = Form(None),
+    role: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    face_file: Optional[UploadFile] = File(None)
+):
+    try:
+        face_data = await face_file.read() if face_file else None
+        updates = {
+            "name": name,
+            "department": department,
+            "role": role,
+            "email": email,
+            "phone": phone,
+            "face_data": face_data
+        }
+        updated_user = controller.modify_user(user_id, updates)
+
+        if face_data:
+            global face_service
+            known_embeddings, student_ids = user_repo.load_known_faces(app_face)
+            face_service = InsightFaceRecognitionService(app_face, known_embeddings, student_ids)
+            controller.face_service = face_service
+
+        return {"message": "User updated successfully", "user": updated_user}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.post("/verify_access")
@@ -114,7 +148,19 @@ async def verify_access(face_file: UploadFile = File(...)):
 @app.get("/logs")
 def get_logs(user_id: Optional[str] = None):
     return controller.get_user_logs(user_id)
-
-
+@app.get("/report")
+def get_report(period_days: int = Query(30, ge=1, le=365)):
+    try:
+        report = controller.get_report(period_days)
+        return {"report": report}
+    except RuntimeError as e:
+        return {"error": str(e)}
+@app.get("/report/today")
+def get_today_attendance_report():
+    try:
+        report = controller.get_today_attendance_report()
+        return {"report": report}
+    except RuntimeError as e:
+        return {"error": str(e)}
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

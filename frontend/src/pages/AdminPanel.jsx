@@ -7,7 +7,7 @@ export default function AdminPanel() {
   const [logs, setLogs] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editUserId, setEditUserId] = useState(null);
-  const [addUserForm, setUserForm] = useState({
+  const [addUserForm, setAddUserForm] = useState({
     user_id: "",
     name: "",
     department: "",
@@ -79,14 +79,14 @@ export default function AdminPanel() {
   const handleAddUser = async (e) => {
     e.preventDefault();
     const formData = new FormData();
-    Object.keys(userForm).forEach((key) => {
+    Object.keys(addUserForm).forEach((key) => {
       formData.append(key, addUserForm[key]);
     });
 
     await axios.post("http://localhost:8000/users", formData);
     alert("User added successfully!");
 
-    setUserForm({
+    setAddUserForm({
       user_id: "",
       name: "",
       department: "",
@@ -215,16 +215,16 @@ export default function AdminPanel() {
               {["user_id", "name", "department", "role", "email", "phone"].map((field) => (
                 <input
                   key={field}
-                  value={userForm[field]}
+                  value={addUserForm[field]}
                   placeholder={field.replace("_", " ").toUpperCase()}
                   className="border border-gray-300 rounded p-2 text-sm"
-                  onChange={(e) => setUserForm({ ...userForm, [field]: e.target.value })}
+                  onChange={(e) => setAddUserForm({ ...addUserForm, [field]: e.target.value })}
                 />
               ))}
               <input
                 type="file"
                 className="border border-gray-300 rounded p-2 text-sm"
-                onChange={(e) => setUserForm({ ...userForm, face_file: e.target.files[0] })}
+                onChange={(e) => setAddUserForm({ ...addUserForm, face_file: e.target.files[0] })}
               />
               <button
                 type="submit"
@@ -284,7 +284,7 @@ export default function AdminPanel() {
                           <button
                               onClick={() => {
                                 setEditUserId(user.user_id);
-                                setUserForm({
+                                setEditUserForm({
                                   name: user.name || "",
                                   department: user.department || "",
                                   role: user.role || "",
@@ -321,14 +321,14 @@ export default function AdminPanel() {
                                 key={field}
                                 placeholder={field.replace("_", " ").toUpperCase()}
                           className="border border-gray-300 rounded p-2 text-sm"
-                          value={userForm[field]}
-                          onChange={(e) => setUserForm({ ...userForm, [field]: e.target.value })}
+                          value={editUserForm[field]}
+                          onChange={(e) => setEditUserForm({ ...editUserForm, [field]: e.target.value })}
                         />
                       ))}
                       <input
                         type="file"
                         className="border border-gray-300 rounded p-2 text-sm"
-                        onChange={(e) => setUserForm({ ...userForm, face_file: e.target.files[0] })}
+                        onChange={(e) => setEditUserForm({ ...editUserForm, face_file: e.target.files[0] })}
                       />
                       <div className="flex justify-end space-x-2">
                         <button

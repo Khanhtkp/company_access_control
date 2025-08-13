@@ -392,41 +392,51 @@ export default function AdminPanel() {
 
   return (
       <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-lg font-semibold text-gray-900">Admin Panel</h1>
+        {/* Header */}
+        <header className="bg-white shadow fixed top-0 left-0 w-full z-50 flex items-center">
+          {/* Logo */}
+          <div className="pl-4">
+            <img
+                src="/uet-logo.png"
+                alt="Logo"
+                className="h-12 w-auto object-contain"
+            />
+          </div>
+
+          {/* Title */}
+          <h1 className="ml-4 text-lg font-semibold text-gray-900">
+            Admin Panel
+          </h1>
+        </header>
+
+        {/* Main */}
+        <div className="flex flex-1 pt-16">
+          {/* Sidebar */}
+          <nav className="w-56 bg-white border-r p-4 space-y-2">
+            {[
+              { key: "addUser", label: "Add User" },
+              { key: "viewUsers", label: "View Users" },
+              { key: "verifyAccess", label: "Verify Access" },
+              { key: "viewLogs", label: "View Logs" },
+              { key: "report", label: "Report" }
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`block w-full text-left px-3 py-2 rounded text-sm ${
+                  activeTab === tab.key
+                    ? "bg-indigo-100 text-indigo-700 font-medium"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Content Area */}
+          <main className="flex-1 p-6">{renderTab()}</main>
         </div>
-      </header>
-
-      {/* Main */}
-      <div className="flex flex-1">
-        {/* Sidebar */}
-        <nav className="w-56 bg-white border-r p-4 space-y-2">
-          {[
-            { key: "addUser", label: "Add User" },
-            { key: "viewUsers", label: "View Users" },
-            { key: "verifyAccess", label: "Verify Access" },
-            { key: "viewLogs", label: "View Logs" },
-            { key: "report", label: "Report" }
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`block w-full text-left px-3 py-2 rounded text-sm ${
-                activeTab === tab.key
-                  ? "bg-indigo-100 text-indigo-700 font-medium"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        {/* Content Area */}
-        <main className="flex-1 p-6">{renderTab()}</main>
       </div>
-    </div>
   );
 }

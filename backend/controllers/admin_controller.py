@@ -39,8 +39,6 @@ class AdminController:
     def get_access_rules(self, user_id: Optional[str] = None) -> List[dict]:
         return [r.to_dict() for r in self.access_service.get_rules(user_id)]
 
-    from datetime import date
-
     def verify_and_log_access(self, face_img: bytes):
         user_id = self.face_service.verify_face(face_img)
         now = datetime.now()

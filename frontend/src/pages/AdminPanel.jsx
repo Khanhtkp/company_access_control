@@ -20,19 +20,42 @@ export default function AdminPanel() {
   const [todayReportText, setTodayReportText] = useState("");
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-
+  const logIntervalRef = useRef(null);
+  const cameraIntervalRef = useRef(null);
+  const cameraStreamRef = useRef(null);
   const fetchUsers = async () => {
     const res = await axios.get("http://localhost:8000/users");
-    setUsers(res.data);
+    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const usersWithAttendance = res.data.map(user => ({
+      ...user,
+      attendance_today: user.last_verified_date === todayStr
+    }));
+    setUsers(usersWithAttendance);
   };
-
   const fetchLogs = async () => {
-    const res = await axios.get("http://localhost:8000/logs");
-    setLogs(res.data);
+    try {
+      const res = await axios.get("http://localhost:8000/logs");
+      setLogs(res.data);
+    } catch (err) {
+      console.error("Error fetching logs:", err);
+    }
   };
   React.useEffect(() => {
     fetchUsers();
   }, []);
+  React.useEffect(() => {
+    if (activeTab === "viewLogs") {
+      fetchLogs();
+      logIntervalRef.current = setInterval(fetchLogs, 3000);
+    }
+    return () => {
+      if (logIntervalRef.current){
+        clearInterval(logIntervalRef.current);
+        logIntervalRef.current = null;
+      }
+    };
+  }, [activeTab]);
+
   const fetchReport = async () => {
     try {
       const res = await axios.get("http://localhost:8000/report");
@@ -80,6 +103,7 @@ export default function AdminPanel() {
   };
   const handleModifyUser = async (userId) => {
     const formData = new FormData();
+    formData.append("user_id", userId);
     formData.append("name", userForm.name || "");
     formData.append("department", userForm.department || "");
     formData.append("role", userForm.role || "");
@@ -99,14 +123,58 @@ export default function AdminPanel() {
   };
 
   const startCamera = () => {
-    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-      videoRef.current.srcObject = stream;
-      const intervalId = setInterval(captureAndVerify, 2000);
-      videoRef.current.dataset.intervalId = intervalId;
-    });
+    if (cameraIntervalRef.current) return;
+
+    let cancelled = false;
+    videoRef.current.cancelCamera = () => { cancelled = true; };
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then((stream) => {
+        if (cancelled) {
+          stream.getTracks().forEach(track => track.stop()); // stop right away
+          return;
+        }
+        cameraStreamRef.current = stream; // store for stopping later
+        videoRef.current.srcObject = stream;
+        cameraIntervalRef.current = setInterval(captureAndVerify, 2000);
+      })
+      .catch(err => {
+        console.error("Camera error:", err);
+      });
   };
 
+  const stopCamera = () => {
+    if (videoRef.current?.cancelCamera) {
+      videoRef.current.cancelCamera();
+      delete videoRef.current.cancelCamera;
+    }
 
+    // Stop the stored stream if it exists
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop());
+      cameraStreamRef.current = null;
+    }
+
+    // Stop whatever is in videoRef as well
+    const stream = videoRef.current?.srcObject;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+
+    if (cameraIntervalRef.current) {
+      clearInterval(cameraIntervalRef.current);
+      cameraIntervalRef.current = null;
+    }
+  };
+
+  React.useEffect(() => {
+    if (activeTab === "verifyAccess") {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+  }, [activeTab]);
   const captureAndVerify = async () => {
     const ctx = canvasRef.current.getContext("2d");
     ctx.drawImage(videoRef.current, 0, 0, 300, 200);
@@ -119,16 +187,16 @@ export default function AdminPanel() {
         if (res.data.status === "granted") {
           alert(`✅ Access granted for ${res.data.user_id}`);
 
-          // 🔹 Mark attendance locally
           setUsers(prevUsers =>
             prevUsers.map(user =>
               user.user_id === res.data.user_id
-                ? { ...user, attendance_today: true }
+                ? { ...user, attendance_today: true, last_verified_date: new Date().toISOString().slice(0, 10)}
                 : user
             )
           );
 
-          clearInterval(intervalIdRef.current); // stop checking
+          clearInterval(cameraIntervalRef.current);
+          cameraIntervalRef.current = null;
         } else {
           console.log("Access denied");
         }
@@ -149,6 +217,7 @@ export default function AdminPanel() {
               {["user_id", "name", "department", "role", "email", "phone"].map((field) => (
                 <input
                   key={field}
+                  value={userForm[field]}
                   placeholder={field.replace("_", " ").toUpperCase()}
                   className="border border-gray-300 rounded p-2 text-sm"
                   onChange={(e) => setUserForm({ ...userForm, [field]: e.target.value })}
@@ -287,18 +356,6 @@ export default function AdminPanel() {
         );
 
       case "verifyAccess":
-        const stopCamera = () => {
-          const stream = videoRef.current?.srcObject;
-          if (stream) {
-            stream.getTracks().forEach(track => track.stop()); // stop all tracks
-            videoRef.current.srcObject = null;
-          }
-          if (videoRef.current?.dataset.intervalId) {
-            clearInterval(videoRef.current.dataset.intervalId);
-            delete videoRef.current.dataset.intervalId;
-          }
-        };
-
         return (
           <div className="flex flex-col items-center space-y-4">
             <video
@@ -363,7 +420,7 @@ export default function AdminPanel() {
                   onClick={fetchReport}
                   className="mb-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm"
               >
-                Refresh Report
+                Get Monthly Report
               </button>
               <div className="bg-gray-50 p-4 rounded h-48 overflow-auto prose max-w-full">
                 <ReactMarkdown>{reportText}</ReactMarkdown>
@@ -376,7 +433,7 @@ export default function AdminPanel() {
                   onClick={fetchTodayReport}
                   className="mb-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm"
               >
-                Refresh Today's Report
+                Get Today's Report
               </button>
               <div className="bg-gray-50 p-4 rounded h-48 overflow-auto prose max-w-full">
                 <ReactMarkdown>{todayReportText}</ReactMarkdown>

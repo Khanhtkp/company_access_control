@@ -38,13 +38,23 @@ class MySQLAccessLogRepository(IAccessLogRepository):
     def get_logs(self, user_id: Optional[str] = None) -> List[AccessLog]:
         with self.conn.cursor() as cursor:
             if user_id:
-                cursor.execute("SELECT * FROM access_logs WHERE user_id=%s", (user_id,))
+                cursor.execute("""
+                    SELECT * FROM access_logs
+                    WHERE user_id=%s
+                    ORDER BY timestamp DESC
+                """, (user_id,))
             else:
-                cursor.execute("SELECT * FROM access_logs")
+                cursor.execute("""
+                    SELECT * FROM access_logs
+                    ORDER BY timestamp DESC
+                """)
             rows = cursor.fetchall()
-            return [AccessLog(
-                user_id=row["user_id"],
-                timestamp=row["timestamp"],
-                status=row["status"],
-                image=row["image"]
-            ) for row in rows]
+            return [
+                AccessLog(
+                    user_id=row["user_id"],
+                    timestamp=row["timestamp"],
+                    status=row["status"],
+                    image=row["image"]
+                )
+                for row in rows
+            ]

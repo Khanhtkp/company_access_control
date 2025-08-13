@@ -29,8 +29,6 @@ services:
       MYSQL_DATABASE: access_control
       MYSQL_USER: admin_api
       MYSQL_PASSWORD: admin123
-    ports:
-      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
 

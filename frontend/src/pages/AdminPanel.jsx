@@ -7,8 +7,16 @@ export default function AdminPanel() {
   const [logs, setLogs] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editUserId, setEditUserId] = useState(null);
-  const [userForm, setUserForm] = useState({
+  const [addUserForm, setUserForm] = useState({
     user_id: "",
+    name: "",
+    department: "",
+    role: "",
+    email: "",
+    phone: "",
+    face_file: null
+  });
+  const [editUserForm, setEditUserForm] = useState({
     name: "",
     department: "",
     role: "",
@@ -25,12 +33,7 @@ export default function AdminPanel() {
   const cameraStreamRef = useRef(null);
   const fetchUsers = async () => {
     const res = await axios.get("http://localhost:8000/users");
-    const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const usersWithAttendance = res.data.map(user => ({
-      ...user,
-      attendance_today: user.last_verified_date === todayStr
-    }));
-    setUsers(usersWithAttendance);
+    setUsers(res.data);
   };
   const fetchLogs = async () => {
     try {
@@ -77,7 +80,7 @@ export default function AdminPanel() {
     e.preventDefault();
     const formData = new FormData();
     Object.keys(userForm).forEach((key) => {
-      formData.append(key, userForm[key]);
+      formData.append(key, addUserForm[key]);
     });
 
     await axios.post("http://localhost:8000/users", formData);
@@ -103,20 +106,15 @@ export default function AdminPanel() {
   };
   const handleModifyUser = async (userId) => {
     const formData = new FormData();
-    formData.append("user_id", userId);
-    formData.append("name", userForm.name || "");
-    formData.append("department", userForm.department || "");
-    formData.append("role", userForm.role || "");
-    formData.append("email", userForm.email || "");
-    formData.append("phone", userForm.phone || "");
-    if (userForm.face_file) {
-      formData.append("face_file", userForm.face_file);
-    }
+    Object.keys(editUserForm).forEach(key => {
+      if (editUserForm[key] !== null) formData.append(key, editUserForm[key]);
+    });
 
     try {
       await axios.patch(`http://localhost:8000/users/${userId}`, formData);
       alert("User updated successfully!");
-      fetchUsers(); // refresh instantly
+      fetchUsers();
+      setIsEditing(false);
     } catch (err) {
       alert("Failed to update user: " + err.response?.data?.detail);
     }
@@ -190,7 +188,7 @@ export default function AdminPanel() {
           setUsers(prevUsers =>
             prevUsers.map(user =>
               user.user_id === res.data.user_id
-                ? { ...user, attendance_today: true, last_verified_date: new Date().toISOString().slice(0, 10)}
+                ? { ...user, attendance_today: true }
                 : user
             )
           );
@@ -287,7 +285,6 @@ export default function AdminPanel() {
                               onClick={() => {
                                 setEditUserId(user.user_id);
                                 setUserForm({
-                                  user_id: user.user_id,
                                   name: user.name || "",
                                   department: user.department || "",
                                   role: user.role || "",

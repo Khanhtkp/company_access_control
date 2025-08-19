@@ -101,7 +101,7 @@ attendance-access-control/
 ---
 
 ## Contributing
-Code (Backend + Frontend): Trần Khắc Phúc Khánh
+Code (Backend + Frontend): Trần Khắc Phúc Khánh\n
 Documents: Lưu Quang Linh
 
 Contributions are welcome! Please fork the repository and submit pull requests.
